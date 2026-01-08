@@ -36,10 +36,10 @@ def calculate_risk_score(credit_score, annual_revenue, loan_amount, years_in_bus
         risk_score -= 15
     elif credit_score >= 650:
         risk_score -= 5
-    elif credit_score < 600:
-        risk_score += 15
-    elif credit_score < 650:
+    elif credit_score >= 600:
         risk_score += 5
+    else:  # credit_score < 600
+        risk_score += 15
     
     # Revenue vs loan amount ratio (weight: 25%)
     if loan_amount > 0 and annual_revenue > 0:
@@ -50,10 +50,10 @@ def calculate_risk_score(credit_score, annual_revenue, loan_amount, years_in_bus
             risk_score -= 8
         elif ratio >= 5:
             risk_score -= 3
-        elif ratio < 2:
-            risk_score += 15
-        elif ratio < 3:
+        elif ratio >= 3:
             risk_score += 8
+        else:  # ratio < 3 (includes < 2)
+            risk_score += 15
     
     # Years in business (weight: 20%)
     if years_in_business >= 10:
@@ -69,7 +69,7 @@ def calculate_risk_score(credit_score, annual_revenue, loan_amount, years_in_bus
     if collateral_available:
         risk_score -= 8
     else:
-        risk_score += 10
+        risk_score += 8  # Symmetric penalty for no collateral
     
     # Keep score in valid range
     risk_score = max(0, min(100, risk_score))
@@ -220,7 +220,9 @@ elif page == "Loan Evaluation":
             industry = st.selectbox(
                 "Industry",
                 ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"],
-                index=["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"].index(st.session_state.industry)
+                index=["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"].index(
+                    st.session_state.industry if st.session_state.industry in ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"] else "Manufacturing"
+                )
             )
             annual_revenue = st.number_input("Annual Revenue (USD)", min_value=0, value=st.session_state.annual_revenue, step=10000)
             loan_amount = st.number_input("Loan Amount Requested (USD)", min_value=0, value=st.session_state.loan_amount, step=10000)
@@ -287,6 +289,9 @@ elif page == "Loan Evaluation":
         with factor_col1:
             # Credit Score Factor
             st.markdown("**Credit History Score**")
+            # Credit factor: normalize credit score to 0-100 scale
+            # Formula: 100 - (difference from max score / 5.5)
+            # This gives roughly: 850->100, 750->82, 650->64, 550->45, etc.
             credit_factor = 100 - abs(st.session_state.credit_score - 850) / 5.5
             credit_factor = max(0, min(100, credit_factor))
             st.progress(credit_factor / 100)
