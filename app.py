@@ -8,6 +8,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Constants
+INDUSTRY_OPTIONS = ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"]
+CREDIT_SCORE_DIVISOR = 5.5  # Normalizes credit score to 0-100 scale (850->100, 650->64)
+
 # Initialize session state for user inputs
 if 'business_name' not in st.session_state:
     st.session_state.business_name = ""
@@ -219,9 +223,9 @@ elif page == "Loan Evaluation":
             business_name = st.text_input("Business Name", value=st.session_state.business_name)
             industry = st.selectbox(
                 "Industry",
-                ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"],
-                index=["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"].index(
-                    st.session_state.industry if st.session_state.industry in ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"] else "Manufacturing"
+                INDUSTRY_OPTIONS,
+                index=INDUSTRY_OPTIONS.index(
+                    st.session_state.industry if st.session_state.industry in INDUSTRY_OPTIONS else "Manufacturing"
                 )
             )
             annual_revenue = st.number_input("Annual Revenue (USD)", min_value=0, value=st.session_state.annual_revenue, step=10000)
@@ -289,10 +293,8 @@ elif page == "Loan Evaluation":
         with factor_col1:
             # Credit Score Factor
             st.markdown("**Credit History Score**")
-            # Credit factor: normalize credit score to 0-100 scale
-            # Formula: 100 - (difference from max score / 5.5)
-            # This gives roughly: 850->100, 750->82, 650->64, 550->45, etc.
-            credit_factor = 100 - abs(st.session_state.credit_score - 850) / 5.5
+            # Normalize credit score to 0-100 scale using constant divisor
+            credit_factor = 100 - abs(st.session_state.credit_score - 850) / CREDIT_SCORE_DIVISOR
             credit_factor = max(0, min(100, credit_factor))
             st.progress(credit_factor / 100)
             if st.session_state.credit_score >= 750:
