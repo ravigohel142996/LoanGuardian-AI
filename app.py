@@ -8,9 +8,187 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS for enterprise dashboard styling and mobile responsiveness
+st.markdown("""
+<style>
+    /* Main container padding and spacing */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        padding-left: 3rem;
+        padding-right: 3rem;
+        max-width: 100%;
+    }
+    
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        
+        /* Stack columns on mobile */
+        .row-widget.stHorizontal {
+            flex-direction: column;
+        }
+        
+        /* Full width buttons on mobile */
+        .stButton button {
+            width: 100%;
+        }
+    }
+    
+    /* Typography improvements */
+    h1 {
+        color: #1E3A8A;
+        font-weight: 700;
+        padding-bottom: 0.5rem;
+        border-bottom: 3px solid #3B82F6;
+        margin-bottom: 1.5rem;
+    }
+    
+    h2 {
+        color: #1E40AF;
+        font-weight: 600;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+    }
+    
+    h3 {
+        color: #1E40AF;
+        font-weight: 600;
+        margin-top: 1rem;
+    }
+    
+    /* Card-like sections */
+    .stAlert {
+        border-radius: 8px;
+        padding: 1rem 1.5rem;
+        margin: 1rem 0;
+    }
+    
+    /* Metrics styling */
+    [data-testid="stMetricValue"] {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #64748B;
+    }
+    
+    /* Form styling */
+    .stTextInput input, .stNumberInput input, .stSelectbox select {
+        border-radius: 6px;
+        border: 2px solid #E2E8F0;
+        padding: 0.5rem;
+    }
+    
+    .stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus {
+        border-color: #3B82F6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    /* Button styling */
+    .stButton button {
+        border-radius: 6px;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton button[kind="primary"] {
+        background-color: #3B82F6;
+        border: none;
+    }
+    
+    .stButton button[kind="primary"]:hover {
+        background-color: #2563EB;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+    }
+    
+    /* Progress bars */
+    .stProgress > div > div > div {
+        background-color: #3B82F6;
+        border-radius: 4px;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #F8FAFC;
+        border-right: 2px solid #E2E8F0;
+    }
+    
+    [data-testid="stSidebar"] h1 {
+        color: #1E3A8A;
+        border-bottom: 2px solid #3B82F6;
+        padding-bottom: 0.5rem;
+    }
+    
+    /* Horizontal rules */
+    hr {
+        margin: 2rem 0;
+        border: none;
+        border-top: 2px solid #E2E8F0;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: #F1F5F9;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    /* Success/Warning/Error message improvements */
+    .stSuccess {
+        background-color: #ECFDF5;
+        border-left: 4px solid #10B981;
+    }
+    
+    .stWarning {
+        background-color: #FFFBEB;
+        border-left: 4px solid #F59E0B;
+    }
+    
+    .stError {
+        background-color: #FEF2F2;
+        border-left: 4px solid #EF4444;
+    }
+    
+    .stInfo {
+        background-color: #EFF6FF;
+        border-left: 4px solid #3B82F6;
+    }
+    
+    /* Footer styling */
+    footer {
+        text-align: center;
+        padding: 2rem 0;
+        color: #64748B;
+        font-size: 0.9rem;
+    }
+    
+    /* Prevent horizontal scroll on mobile */
+    .main {
+        overflow-x: hidden;
+    }
+    
+    /* Responsive tables and containers */
+    @media (max-width: 768px) {
+        .row-widget {
+            overflow-x: auto;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Constants
 INDUSTRY_OPTIONS = ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"]
 CREDIT_SCORE_DIVISOR = 5.5  # Normalizes credit score to 0-100 scale (850->100, 650->64)
+MAX_FEATURE_IMPACT = 15.0  # Maximum absolute impact any single feature can have on risk score
 
 # Initialize session state for user inputs
 if 'business_name' not in st.session_state:
@@ -30,54 +208,101 @@ if 'collateral_available' not in st.session_state:
 if 'assessment_run' not in st.session_state:
     st.session_state.assessment_run = False
 
-# Helper function to calculate risk score
-def calculate_risk_score(credit_score, annual_revenue, loan_amount, years_in_business, collateral_available):
-    """Calculate risk score based on simple, explainable rules"""
+# Helper function to calculate risk score with feature importance
+def calculate_risk_score(credit_score, annual_revenue, loan_amount, years_in_business, collateral_available, return_details=False):
+    """Calculate risk score based on simple, explainable rules
+    
+    Args:
+        credit_score: Borrower's credit score (300-850)
+        annual_revenue: Annual business revenue in USD
+        loan_amount: Requested loan amount in USD
+        years_in_business: Years the business has been operating
+        collateral_available: Whether collateral is available (boolean)
+        return_details: If True, returns (score, feature_impacts, reasoning)
+    
+    Returns:
+        If return_details=False: risk_score (int)
+        If return_details=True: (risk_score, feature_impacts dict, reasoning list)
+    """
     risk_score = 50  # Start at medium risk
+    feature_impacts = {}
+    reasoning = []
     
     # Credit score impact (weight: 30%)
     if credit_score >= 750:
-        risk_score -= 15
+        credit_impact = -15
+        reasoning.append(f"✓ Excellent credit score ({credit_score}) reduces risk significantly")
     elif credit_score >= 650:
-        risk_score -= 5
+        credit_impact = -5
+        reasoning.append(f"✓ Good credit score ({credit_score}) provides moderate risk reduction")
     elif credit_score >= 600:
-        risk_score += 5
+        credit_impact = 5
+        reasoning.append(f"⚠ Fair credit score ({credit_score}) slightly increases risk")
     else:  # credit_score < 600
-        risk_score += 15
+        credit_impact = 15
+        reasoning.append(f"✗ Low credit score ({credit_score}) significantly increases default risk")
+    
+    risk_score += credit_impact
+    feature_impacts['Credit Score'] = credit_impact
     
     # Revenue vs loan amount ratio (weight: 25%)
     if loan_amount > 0 and annual_revenue > 0:
         ratio = annual_revenue / loan_amount
         if ratio >= 20:
-            risk_score -= 12
+            ratio_impact = -12
+            reasoning.append(f"✓ Exceptional revenue coverage ({ratio:.1f}x) strongly reduces risk")
         elif ratio >= 10:
-            risk_score -= 8
+            ratio_impact = -8
+            reasoning.append(f"✓ Strong revenue coverage ({ratio:.1f}x) reduces risk")
         elif ratio >= 5:
-            risk_score -= 3
+            ratio_impact = -3
+            reasoning.append(f"✓ Adequate revenue coverage ({ratio:.1f}x) provides some risk reduction")
         elif ratio >= 3:
-            risk_score += 8
-        else:  # ratio < 3 (includes < 2)
-            risk_score += 15
+            ratio_impact = 8
+            reasoning.append(f"⚠ Moderate revenue coverage ({ratio:.1f}x) increases risk")
+        else:  # ratio < 3
+            ratio_impact = 15
+            reasoning.append(f"✗ Low revenue coverage ({ratio:.1f}x) significantly increases repayment risk")
+    else:
+        ratio_impact = 0
+        reasoning.append("⚠ Insufficient financial data for revenue analysis")
+    
+    risk_score += ratio_impact
+    feature_impacts['Revenue/Loan Ratio'] = ratio_impact
     
     # Years in business (weight: 20%)
     if years_in_business >= 10:
-        risk_score -= 10
+        years_impact = -10
+        reasoning.append(f"✓ Well-established business ({years_in_business} years) reduces risk")
     elif years_in_business >= 5:
-        risk_score -= 5
+        years_impact = -5
+        reasoning.append(f"✓ Mature business ({years_in_business} years) provides stability")
     elif years_in_business >= 2:
-        risk_score -= 2
-    elif years_in_business < 2:
-        risk_score += 10
+        years_impact = -2
+        reasoning.append(f"✓ Established operations ({years_in_business} years) meets minimum threshold")
+    else:  # years_in_business < 2
+        years_impact = 10
+        reasoning.append(f"✗ Limited operating history ({years_in_business} years) increases uncertainty")
+    
+    risk_score += years_impact
+    feature_impacts['Business Maturity'] = years_impact
     
     # Collateral (weight: 15%)
     if collateral_available:
-        risk_score -= 8
+        collateral_impact = -8
+        reasoning.append("✓ Collateral available reduces loss exposure")
     else:
-        risk_score += 8  # Symmetric penalty for no collateral
+        collateral_impact = 8
+        reasoning.append("⚠ No collateral increases loss exposure in default scenarios")
+    
+    risk_score += collateral_impact
+    feature_impacts['Collateral'] = collateral_impact
     
     # Keep score in valid range
     risk_score = max(0, min(100, risk_score))
     
+    if return_details:
+        return risk_score, feature_impacts, reasoning
     return risk_score
 
 def get_risk_level(risk_score):
@@ -254,33 +479,221 @@ elif page == "Loan Evaluation":
         st.markdown("---")
         st.subheader("Risk Assessment Results")
         
-        # Calculate risk score
-        risk_score = calculate_risk_score(
+        # Calculate risk score with details
+        risk_score, feature_impacts, reasoning = calculate_risk_score(
             st.session_state.credit_score,
             st.session_state.annual_revenue,
             st.session_state.loan_amount,
             st.session_state.years_in_business,
-            st.session_state.collateral_available
+            st.session_state.collateral_available,
+            return_details=True
         )
         
         risk_level, risk_color = get_risk_level(risk_score)
         
-        # Risk Score
-        st.markdown(f"**Overall Risk Score: {risk_score}/100**")
-        st.progress(risk_score / 100)
+        # Risk Score Display
+        score_col1, score_col2, score_col3 = st.columns([2, 1, 1])
         
-        # Risk Label with recommendation
+        with score_col1:
+            st.markdown(f"### Overall Risk Score: {risk_score}/100")
+            st.progress(risk_score / 100)
+        
+        with score_col2:
+            if risk_level == "LOW":
+                st.markdown("### 🟢")
+            elif risk_level == "MEDIUM":
+                st.markdown("### 🟡")
+            else:
+                st.markdown("### 🔴")
+        
+        with score_col3:
+            st.markdown(f"### {risk_level}")
+        
+        # Risk Level with detailed reasoning
         if risk_level == "LOW":
-            st.success(f"Risk Level: {risk_level} - Recommended for Approval")
+            st.success(f"✓ **Risk Level: {risk_level} - Recommended for Approval**")
             recommendation = "This loan application demonstrates strong creditworthiness and manageable risk. Proceed with standard approval process."
+            st.markdown("**Key Strengths:**")
+            for reason in reasoning:
+                if "✓" in reason:
+                    st.markdown(f"- {reason}")
         elif risk_level == "MEDIUM":
-            st.warning(f"Risk Level: {risk_level} - Additional Review Recommended")
+            st.warning(f"⚠ **Risk Level: {risk_level} - Additional Review Recommended**")
             recommendation = "This loan application requires additional due diligence. Consider requesting additional documentation or collateral to mitigate risk."
+            st.markdown("**Risk Considerations:**")
+            for reason in reasoning:
+                st.markdown(f"- {reason}")
         else:
-            st.error(f"Risk Level: {risk_level} - Requires Senior Review")
+            st.error(f"✗ **Risk Level: {risk_level} - Requires Senior Review**")
             recommendation = "This loan application presents elevated risk factors. Senior underwriter review and enhanced monitoring protocols recommended."
+            st.markdown("**Critical Risk Factors:**")
+            for reason in reasoning:
+                if "✗" in reason or "⚠" in reason:
+                    st.markdown(f"- {reason}")
         
-        st.info(f"**Recommendation:** {recommendation}")
+        st.info(f"**💡 Recommendation:** {recommendation}")
+        
+        st.markdown("---")
+        st.subheader("📊 Feature Importance Analysis")
+        st.markdown("*Understanding which factors drive the risk assessment*")
+        
+        # Display feature importance with visual bars
+        st.markdown("#### Individual Factor Contributions to Risk Score")
+        
+        # Sort features by absolute impact
+        sorted_features = sorted(feature_impacts.items(), key=lambda x: abs(x[1]), reverse=True)
+        
+        for feature_name, impact in sorted_features:
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                st.markdown(f"**{feature_name}**")
+            
+            with col2:
+                # Show impact with color coding
+                if impact < 0:
+                    st.markdown(f"<span style='color: green; font-weight: bold;'>{impact:+.0f} points</span>", unsafe_allow_html=True)
+                elif impact > 0:
+                    st.markdown(f"<span style='color: red; font-weight: bold;'>{impact:+.0f} points</span>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<span style='color: gray; font-weight: bold;'>{impact:+.0f} points</span>", unsafe_allow_html=True)
+            
+            with col3:
+                # Visual bar showing impact direction and magnitude
+                # Use consistent progress bars with normalized values
+                normalized = min(1.0, abs(impact) / MAX_FEATURE_IMPACT)
+                if impact < 0:
+                    # Negative impact (good) - show green bar via progress
+                    st.progress(normalized)
+                    st.markdown("<span style='color: green; font-size: 0.8em;'>Reduces risk</span>", unsafe_allow_html=True)
+                elif impact > 0:
+                    # Positive impact (bad) - show progress bar (will appear blue by default)
+                    st.progress(normalized)
+                    st.markdown("<span style='color: red; font-size: 0.8em;'>Increases risk</span>", unsafe_allow_html=True)
+                else:
+                    st.progress(0)
+                    st.markdown("<span style='color: gray; font-size: 0.8em;'>Neutral</span>", unsafe_allow_html=True)
+        
+        st.markdown("""
+        **Legend:**
+        - 🟢 **Negative values** (green) reduce risk and improve loan quality
+        - 🔴 **Positive values** (red) increase risk and require mitigation
+        - Base risk score starts at 50/100 (medium risk)
+        """)
+        
+        st.markdown("---")
+        st.subheader("🔮 What-If Simulation")
+        st.markdown("*See how changes to loan parameters impact the risk assessment*")
+        
+        st.markdown("#### Adjust Parameters to See Impact")
+        
+        # What-if controls
+        whatif_col1, whatif_col2 = st.columns(2)
+        
+        with whatif_col1:
+            st.markdown("**Scenario: Adjust Loan Amount**")
+            loan_adjustment = st.slider(
+                "Loan Amount Adjustment (%)",
+                min_value=-40,
+                max_value=100,
+                value=0,
+                step=5,
+                help="Adjust the requested loan amount to see impact on risk (limited to -40% to avoid near-zero amounts)"
+            )
+            new_loan_amount = max(1000, st.session_state.loan_amount * (1 + loan_adjustment / 100))  # Ensure minimum of $1,000
+            st.markdown(f"New Loan Amount: **${new_loan_amount:,.0f}**")
+        
+        with whatif_col2:
+            st.markdown("**Scenario: Adjust Annual Revenue**")
+            revenue_adjustment = st.slider(
+                "Annual Revenue Adjustment (%)",
+                min_value=-50,
+                max_value=100,
+                value=0,
+                step=5,
+                help="Adjust annual revenue to see impact on risk"
+            )
+            new_annual_revenue = st.session_state.annual_revenue * (1 + revenue_adjustment / 100)
+            st.markdown(f"New Annual Revenue: **${new_annual_revenue:,.0f}**")
+        
+        # Calculate new risk score with adjusted values
+        if loan_adjustment != 0 or revenue_adjustment != 0:
+            new_risk_score, new_impacts, new_reasoning = calculate_risk_score(
+                st.session_state.credit_score,
+                new_annual_revenue,
+                new_loan_amount,
+                st.session_state.years_in_business,
+                st.session_state.collateral_available,
+                return_details=True
+            )
+            
+            new_risk_level, _ = get_risk_level(new_risk_score)
+            
+            st.markdown("---")
+            st.markdown("#### 📈 Impact Analysis")
+            
+            # Show before/after comparison
+            comp_col1, comp_col2, comp_col3 = st.columns(3)
+            
+            # Calculate original ratio safely
+            original_ratio = None
+            if st.session_state.loan_amount > 0 and st.session_state.annual_revenue > 0:
+                original_ratio = st.session_state.annual_revenue / st.session_state.loan_amount
+            
+            with comp_col1:
+                st.markdown("**Original Assessment**")
+                st.metric("Risk Score", f"{risk_score}/100")
+                st.metric("Risk Level", risk_level)
+                if original_ratio is not None:
+                    st.metric("Revenue/Loan Ratio", f"{original_ratio:.2f}x")
+            
+            with comp_col2:
+                st.markdown("**Simulated Assessment**")
+                score_change = new_risk_score - risk_score
+                st.metric("Risk Score", f"{new_risk_score}/100", delta=f"{score_change:+.0f} pts", delta_color="inverse")
+                
+                # Determine level change with clearer logic
+                if new_risk_level != risk_level:
+                    # Risk level changed
+                    risk_levels_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+                    if risk_levels_order.get(new_risk_level, 1) < risk_levels_order.get(risk_level, 1):
+                        level_indicator = "↓ Improved"
+                    else:
+                        level_indicator = "↑ Worsened"
+                else:
+                    level_indicator = "→ Same"
+                
+                st.metric("Risk Level", new_risk_level, delta=level_indicator)
+                
+                if new_loan_amount > 0 and new_annual_revenue > 0:
+                    new_ratio = new_annual_revenue / new_loan_amount
+                    if original_ratio is not None:
+                        ratio_change = new_ratio - original_ratio
+                        st.metric("Revenue/Loan Ratio", f"{new_ratio:.2f}x", delta=f"{ratio_change:+.2f}x")
+                    else:
+                        st.metric("Revenue/Loan Ratio", f"{new_ratio:.2f}x")
+            
+            with comp_col3:
+                st.markdown("**Outcome**")
+                if score_change < 0:
+                    st.success(f"✓ Risk Reduced by {abs(score_change):.0f} points")
+                    st.markdown("**Impact:** Improved loan profile")
+                elif score_change > 0:
+                    st.error(f"✗ Risk Increased by {score_change:.0f} points")
+                    st.markdown("**Impact:** Weakened loan profile")
+                else:
+                    st.info("→ No change in risk")
+                    st.markdown("**Impact:** Neutral effect")
+                
+                # Show if risk level changed
+                if new_risk_level != risk_level:
+                    if new_risk_score < risk_score:
+                        st.markdown(f"🎯 **Tier Change:** {risk_level} → {new_risk_level}")
+                    else:
+                        st.markdown(f"⚠️ **Tier Change:** {risk_level} → {new_risk_level}")
+        
+        else:
+            st.info("💡 **Tip:** Adjust the sliders above to simulate different scenarios and see how they impact the risk assessment.")
         
         st.markdown("---")
         st.subheader("Risk Factor Breakdown")
