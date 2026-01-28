@@ -188,6 +188,7 @@ st.markdown("""
 # Constants
 INDUSTRY_OPTIONS = ["Manufacturing", "Retail", "Logistics", "Healthcare", "Real Estate"]
 CREDIT_SCORE_DIVISOR = 5.5  # Normalizes credit score to 0-100 scale (850->100, 650->64)
+MAX_FEATURE_IMPACT = 15.0  # Maximum absolute impact any single feature can have on risk score
 
 # Initialize session state for user inputs
 if 'business_name' not in st.session_state:
@@ -559,14 +560,19 @@ elif page == "Loan Evaluation":
             
             with col3:
                 # Visual bar showing impact direction and magnitude
+                # Use consistent progress bars with normalized values
+                normalized = min(1.0, abs(impact) / MAX_FEATURE_IMPACT)
                 if impact < 0:
-                    # Negative impact (good) - show green bar
-                    normalized = abs(impact) / 15.0  # Max impact is around 15
-                    st.progress(min(1.0, normalized))
+                    # Negative impact (good) - show green bar via progress
+                    st.progress(normalized)
+                    st.markdown("<span style='color: green; font-size: 0.8em;'>Reduces risk</span>", unsafe_allow_html=True)
                 elif impact > 0:
-                    # Positive impact (bad) - show in metric
-                    normalized = impact / 15.0
-                    st.markdown(f"⚠️ {normalized*100:.0f}%")
+                    # Positive impact (bad) - show progress bar (will appear blue by default)
+                    st.progress(normalized)
+                    st.markdown("<span style='color: red; font-size: 0.8em;'>Increases risk</span>", unsafe_allow_html=True)
+                else:
+                    st.progress(0)
+                    st.markdown("<span style='color: gray; font-size: 0.8em;'>Neutral</span>", unsafe_allow_html=True)
         
         st.markdown("""
         **Legend:**
@@ -588,13 +594,13 @@ elif page == "Loan Evaluation":
             st.markdown("**Scenario: Adjust Loan Amount**")
             loan_adjustment = st.slider(
                 "Loan Amount Adjustment (%)",
-                min_value=-50,
+                min_value=-40,
                 max_value=100,
                 value=0,
                 step=5,
-                help="Adjust the requested loan amount to see impact on risk"
+                help="Adjust the requested loan amount to see impact on risk (limited to -40% to avoid near-zero amounts)"
             )
-            new_loan_amount = st.session_state.loan_amount * (1 + loan_adjustment / 100)
+            new_loan_amount = max(1000, st.session_state.loan_amount * (1 + loan_adjustment / 100))  # Ensure minimum of $1,000
             st.markdown(f"New Loan Amount: **${new_loan_amount:,.0f}**")
         
         with whatif_col2:
@@ -629,12 +635,16 @@ elif page == "Loan Evaluation":
             # Show before/after comparison
             comp_col1, comp_col2, comp_col3 = st.columns(3)
             
+            # Calculate original ratio safely
+            original_ratio = None
+            if st.session_state.loan_amount > 0 and st.session_state.annual_revenue > 0:
+                original_ratio = st.session_state.annual_revenue / st.session_state.loan_amount
+            
             with comp_col1:
                 st.markdown("**Original Assessment**")
                 st.metric("Risk Score", f"{risk_score}/100")
                 st.metric("Risk Level", risk_level)
-                if st.session_state.loan_amount > 0 and st.session_state.annual_revenue > 0:
-                    original_ratio = st.session_state.annual_revenue / st.session_state.loan_amount
+                if original_ratio is not None:
                     st.metric("Revenue/Loan Ratio", f"{original_ratio:.2f}x")
             
             with comp_col2:
@@ -642,13 +652,26 @@ elif page == "Loan Evaluation":
                 score_change = new_risk_score - risk_score
                 st.metric("Risk Score", f"{new_risk_score}/100", delta=f"{score_change:+.0f} pts", delta_color="inverse")
                 
-                level_changed = "↑" if new_risk_level != risk_level and new_risk_score > risk_score else "↓" if new_risk_level != risk_level else "→"
-                st.metric("Risk Level", new_risk_level, delta=level_changed)
+                # Determine level change with clearer logic
+                if new_risk_level != risk_level:
+                    # Risk level changed
+                    risk_levels_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+                    if risk_levels_order.get(new_risk_level, 1) < risk_levels_order.get(risk_level, 1):
+                        level_indicator = "↓ Improved"
+                    else:
+                        level_indicator = "↑ Worsened"
+                else:
+                    level_indicator = "→ Same"
+                
+                st.metric("Risk Level", new_risk_level, delta=level_indicator)
                 
                 if new_loan_amount > 0 and new_annual_revenue > 0:
                     new_ratio = new_annual_revenue / new_loan_amount
-                    ratio_change = new_ratio - original_ratio if st.session_state.loan_amount > 0 and st.session_state.annual_revenue > 0 else new_ratio
-                    st.metric("Revenue/Loan Ratio", f"{new_ratio:.2f}x", delta=f"{ratio_change:+.2f}x")
+                    if original_ratio is not None:
+                        ratio_change = new_ratio - original_ratio
+                        st.metric("Revenue/Loan Ratio", f"{new_ratio:.2f}x", delta=f"{ratio_change:+.2f}x")
+                    else:
+                        st.metric("Revenue/Loan Ratio", f"{new_ratio:.2f}x")
             
             with comp_col3:
                 st.markdown("**Outcome**")
